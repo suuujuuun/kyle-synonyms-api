@@ -11,9 +11,8 @@ word_vectors = None
 custom_words = None
 
 # Paths to your files
-GLOVE_FILE_PATH = '/Users/seungjun/Desktop/AI/Word_labeling /glove.6B.100d.txt'
-CUSTOM_WORDS_FILE_PATH = '/Users/seungjun/Desktop/AI/Word_labeling /cleaned_words_final_filtered.txt'
-
+GLOVE_FILE_PATH = 'glove.6B.100d.txt'
+CUSTOM_WORDS_FILE_PATH = 'cleaned_words_final_filtered.txt'
 def load_resources():
     global word_vectors, custom_words
     if word_vectors is None:
