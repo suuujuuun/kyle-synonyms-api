@@ -1,58 +1,42 @@
-from flask import Flask, request, jsonify
 from gensim.models import KeyedVectors
+import os, json
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-GLOVE_FILE_PATH = "glove.6B.100d.txt"
-CUSTOM_WORDS_FILE_PATH = "cleaned_words_final_filtered.txt"
+# ───────────────────────── ① 경로 / 환경변수 ─────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GLOVE_PATH  = os.getenv("GLOVE_PATH",  os.path.join(BASE_DIR, "glove.6B.100d.txt"))
+WORDS_PATH  = os.getenv("WORDS_PATH",  os.path.join(BASE_DIR, "cleaned_words_final_filtered.txt"))
 
-word_vectors = None
-custom_words = None
+# ───────────────────────── ② 리소스 로딩 (import 시 1회) ────────────
+print("⇢ Loading GloVe…")
+word_vectors = KeyedVectors.load_word2vec_format(GLOVE_PATH, binary=False,
+                                                 no_header=True, encoding="latin-1")
+print("✓ GloVe loaded.")
 
+print("⇢ Loading custom-word list…")
+with open(WORDS_PATH) as f:
+    custom_words = {w.strip().lower() for w in f}
+print(f"✓ {len(custom_words):,} custom words loaded.")
 
-def load_resources():
-    global word_vectors, custom_words
+# ───────────────────────── ③ 라우트 ──────────────────────────────
+@app.route("/")
+def healthcheck():
+    return jsonify({"status": "ok"}), 200          # Render health check 용
 
-    if word_vectors is None:
-        print("Loading GloVe model...")
-        word_vectors = KeyedVectors.load_word2vec_format(
-            GLOVE_FILE_PATH, binary=False, no_header=True, encoding="latin-1"
-        )
-        print("GloVe model loaded.")
-
-    if custom_words is None:
-        print("Loading custom words...")
-        with open(CUSTOM_WORDS_FILE_PATH) as f:
-            custom_words = {line.strip().lower() for line in f}
-        print("Custom words loaded.")
-
-
-@app.route("/synonyms", methods=["GET"])
-def get_synonyms():
+@app.route("/synonyms")
+def synonyms():
     word = request.args.get("word", "").lower()
     if not word:
-        return jsonify({"error": "Query parameter 'word' is required."}), 400
+        return jsonify({"error": "parameter 'word' required"}), 400
+    if word not in word_vectors:
+        return jsonify({"error": f"'{word}' not in GloVe vocab"}), 404
 
-    try:
-        if word not in word_vectors:
-            return jsonify({"error": f"'{word}' not in GloVe vocabulary."}), 404
-
-        # topn 높게 잡고 custom 단어로 필터링
-        candidates = word_vectors.most_similar(word, topn=10_000)
-        filtered = [
-            {"word": w, "score": s}
-            for w, s in candidates
-            if w.lower() in custom_words
-        ][:50]
-
-        return jsonify(filtered)
-
-    except KeyError as e:
-        return jsonify({"error": f"KeyError: {e}"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Unexpected error: {e}"}), 500
-
-
-if __name__ == "__main__":
-    load_resources()
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    sims = word_vectors.most_similar(word, topn=10_000)
+    results = [
+        {"word": w, "score": s}
+        for w, s in sims
+        if w.lower() in custom_words
+    ][:50]
+    return jsonify(results)
